@@ -1,0 +1,69 @@
+
+name: Cloud PC - Windows diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Configure workflow
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "Cloud PC diagnostic started"
+
+      - name: Check Windows version
+        shell: pwsh
+        run: |
+          Get-ComputerInfo |
+            Select-Object WindowsProductName,
+              WindowsVersion,
+              OsArchitecture
+
+      - name: Check CPU
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor |
+            Select-Object Name,
+              NumberOfCores,
+              NumberOfLogicalProcessors
+
+      - name: Check RAM
+        shell: pwsh
+        run: |
+          $ram = Get-CimInstance Win32_ComputerSystem
+          [math]::Round(
+            $ram.TotalPhysicalMemory / 1GB, 2
+          )
+
+      - name: Check disk space
+        shell: pwsh
+        run: |
+          Get-PSDrive C |
+            Select-Object Name, Used, Free
+
+      - name: Check Remote Desktop service
+        shell: pwsh
+        run: |
+          Get-Service TermService |
+            Select-Object Name, Status, StartType
+
+      - name: Check network
+        shell: pwsh
+        run: |
+          Get-NetAdapter |
+            Select-Object Name, Status, LinkSpeed
+
+      - name: Finish diagnostics
+        shell: pwsh
+        run: |
+          Write-Host "Diagnostics completed."
+          Write-Host "This runner is temporary."
+          
