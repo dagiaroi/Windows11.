@@ -1,5 +1,5 @@
 
-name: Cloud PC - Windows diagnostics
+name: Cloud PC - Tailscale Test
 
 on:
   workflow_dispatch:
@@ -8,62 +8,55 @@ permissions:
   contents: read
 
 jobs:
-  secure-rdp:
+  cloud-pc:
     runs-on: windows-latest
     timeout-minutes: 350
 
     steps:
-      - name: Configure workflow
+      - name: Install Tailscale
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Write-Host "Cloud PC diagnostic started"
 
-      - name: Check Windows version
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+          $installer = "$env:TEMP\tailscale.msi"
+
+          Invoke-WebRequest $url -OutFile $installer
+
+          Start-Process msiexec.exe `
+            -ArgumentList "/i `"$installer`" /quiet /norestart" `
+            -Wait
+
+          Remove-Item $installer -Force
+
+      - name: Connect Tailscale
+        shell: pwsh
+        env:
+          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = "$env:ProgramFiles\Tailscale\tailscale.exe"
+
+          if (-not $env:TS_AUTHKEY) {
+            throw "Missing TAILSCALE_AUTHKEY repository secret."
+          }
+
+          & $exe up "--authkey=$env:TS_AUTHKEY" `
+            "--hostname=github-cloud-pc"
+
+          Start-Sleep -Seconds 5
+
+          $ip = & $exe ip -4
+          if (-not $ip) {
+            throw "Tailscale IP was not assigned."
+          }
+
+          Write-Host "Tailscale connection established."
+          Write-Host "Runner Tailscale IP: $ip"
+
+      - name: Verify Tailscale
         shell: pwsh
         run: |
-          Get-ComputerInfo |
-            Select-Object WindowsProductName,
-              WindowsVersion,
-              OsArchitecture
-
-      - name: Check CPU
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_Processor |
-            Select-Object Name,
-              NumberOfCores,
-              NumberOfLogicalProcessors
-
-      - name: Check RAM
-        shell: pwsh
-        run: |
-          $ram = Get-CimInstance Win32_ComputerSystem
-          [math]::Round(
-            $ram.TotalPhysicalMemory / 1GB, 2
-          )
-
-      - name: Check disk space
-        shell: pwsh
-        run: |
-          Get-PSDrive C |
-            Select-Object Name, Used, Free
-
-      - name: Check Remote Desktop service
-        shell: pwsh
-        run: |
-          Get-Service TermService |
-            Select-Object Name, Status, StartType
-
-      - name: Check network
-        shell: pwsh
-        run: |
-          Get-NetAdapter |
-            Select-Object Name, Status, LinkSpeed
-
-      - name: Finish diagnostics
-        shell: pwsh
-        run: |
-          Write-Host "Diagnostics completed."
-          Write-Host "This runner is temporary."
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" status
+          Write-Host "Tailscale test completed."
           
